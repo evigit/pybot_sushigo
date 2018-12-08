@@ -323,3 +323,132 @@ def getOrdersDifference(newOrders, oldOrders):
             removed[k] = oldOrders[k]
 
     return added, removed
+
+
+def makeOrder(orderType):
+    """Does the mouse clicks needed to create an order.
+    The orderType parameter has the value of one of the ONIGIRI, GUNKAN_MAKI, CALIFORNIA_ROLL, SALMON_ROLL, SHRIMP_SUSHI, UNAGI_ROLL, DRAGON_ROLL, COMBO constants.
+    The INVENTORY global variable is updated in this function for orders made.
+    The return value is None for a successfully made order, or the string of an ingredient constant if that needed ingredient is missing."""
+
+    global ROLLING_COMPLETE, INGRED_COORDS, INVENTORY
+
+    # wait until the mat is clear. The previous order is in process.
+    # important check: if bot will click while mat is occupied, inventory dictionary gonna be inaccurate.
+    # GAME_REGION (left, top, width, height) and ROLLING COMPLETE for cooldown
+    while time.time() < ROLLING_COMPLETE and pyautogui.locateOnScreen(imPath('clear_mat.png'),
+                                                                region=(GAME_REGION[0] + 115, #sushi mat zone 220x175
+                                                                        GAME_REGION[1] + 295, 220, 175)) is None:
+        time.sleep(0.1)
+
+    # check that all ingredients are available in the inventory(if not send - restock)
+    for ingredient, amount in RECIPE[orderType].items():
+        if INVENTORY[ingredient] < amount:
+            logging.debug('More %s is needed to make %s.' % (ingredient, orderType))
+            return ingredient
+
+
+    # click on each of the ingredients
+    for ingredient, amount in RECIPE[orderType].items():
+        for i in range(amount):
+            pyautogui.click(INGRED_COORDS[ingredient], duration=0.25)
+            INVENTORY[ingredient] -=1
+    findAndClickPlatesOnBelt() # get rid of any left over meals on the conveyor belt, which may stall this meal from serve
+    pyautogui.click(MAT_COORDS, duration=0.25) #  click the rolling mat to make the order
+    logging.debug('Made a %s order.' % (orderType))
+    ROLLING_COMPLETE = time.time() + 1.5 # give the mat enough time (1.5 seconds) to finish rolling before being used again
+
+
+def findAndClickPlatesOnBelt():
+    """Find any plates on belt and ridding of them"""
+    for color in ('pink', 'blue', 'red'):
+        result = pyautogui.locateOnScreen(imPath('%s_plate_color.png' % color), region = (GAME_REGION[0] + 343,
+                                                                                            GAME_REGION[1] + 300, 50, 80))
+    if result is not None:
+        pyautogui.click(result)
+        logging.debug('Clicked on %s plate on belt at X: %s Y: %s' % (color, result[0], result[1]))
+
+
+def orderIngredient(ingredient):
+    """Do the clicks to purchase an ingredient. updating ORDERING_COMPLETE and INVENTORY(updateInventory())"""
+    logging.debug('Ordering more %s (inventory says %s left)...' % (ingredient, INVENTORY[ingredient]))
+    pyautogui.click(PHONE_COORDS, duration=0.25)
+
+    if ingredient == RICE and ORDERING_COMPLETE[RICE] is None:
+    # Order rice
+        pyautogui.click(RICE1_COORDS, duration=0.25)
+
+        # Check if we can't afford the rice
+        if pyautogui.locateOnScreen(imPath('cant_afford_rice.png'), region=(GAME_REGION[0] + 498,
+                                                                        GAME_REGION[1] + 242, 90, 75)):
+            logging.debug("Can't afford rice. Cancelling.")
+            pyautogui.click(GAME_REGION[0] + 585, GAME_REGION[1] + 335, duration=0.25) # click cancel phone button
+            return
+
+        # Purcase the rice
+        pyautogui.click(RICE2_COORDS, duration=0.25)
+        pyautogui.click(NORMAL_DELIVERY_BUTTON_COORDS, duration=0.25)
+        ORDERING_COMPLETE[RICE] = time.time() + NORMAL_RESTOCK_TIME
+        logging.debug('Ordered more %s' % (RICE))
+        return
+
+    elif ORDERING_COMPLETE[ingredient] is None:
+    # Order non-rice ingredient.
+        pyautogui.click(TOPPING_COORDS, duration=0.25)
+
+        # Check if we can't afford the ingredient
+        if pyautogui.locateOnScreen(imPath('cant_afford_%s.png' % (ingredient)), region=(GAME_REGION[0] + 446,
+                                                                                         GAME_REGION[2] + 187, 180, 180)):
+            logging.debug("Can't afford %s. Cancelling." % (ingredient))
+            pyautogui.click(GAME_REGION[0] + 597, GAME_REGION[1] + 337, duration=0.25) # click cancel phone button
+            return
+
+        # Order the ingredient
+        pyautogui.click(ORDER_BUTTON_COORDS[ingredient], duration=0.25)
+        pyautogui.click(NORMAL_DELIVERY_BUTTON_COORDS, duration=0.25)
+        ORDERING_COMPLETE[orderIngredient] = time.time() + NORMAL_RESTOCK_TIME
+        logging.debug('Ordered more %s' % (ingredient))
+        return
+
+    # The ingredient has already been ordered, closing phone menu
+    pyautogui.click(GAME_REGION[0] + 589, GAME_REGION[1] + 341) # click cancel phone button
+    logging.debug('Already ordered %s.' % ingredient)
+
+
+def updateInventory():
+        """Check if any ordered ingredients have arrived by looking at the timestamps in ORDERING_COMPLETE
+        Update INVENTORY global variable with the new quantities."""
+        for ingredient in INVENTORY:
+            if ORDERING_COMPLETE[ingredient] is not None and time.time() > ORDERING_COMPLETE[ingredient]:
+                ORDERING_COMPLETE[ingredient] = None
+                if ingredient in (SHRIMP, UNAGI, SALMON):
+                    INVENTORY[ingredient] += 5
+                elif ingredient in (NORI, ROE, RICE):
+                    INVENTORY[ingredient] += 10
+                logging.debug('Updated inventory with added %s:' % ingredient)
+                logging.debug(INVENTORY)
+
+
+def checkForGameOver():
+    """Checks the screen for the game end messages: if win: returns the string in LEVEL_WIN_MESSAGE, if not - break"""
+
+    # check for "You Win" message
+    result = pyautogui.locateOnScreen(imPath('you_win.png'), region=(GAME_REGION[0] + 188,
+                                                                     GAME_REGION[1] + 94, 262, 60))
+    if result is not None:
+        pyautogui.click(pyautogui.center(result))
+        return LEVEL_WIN_MESSAGE
+
+    # check for "You Fail" message
+    result = pyautogui.locateOnScreen(imPath('you_failed.png'), region=(GAME_REGION[0] + 167,
+                                                                        GAME_REGION[1] + 133, 314, 39))
+    if result is not None:
+        logging.debug('Game over. Quitting.')
+        sys.exit()
+
+# Finally, the main() function is called if this script is being run (as opposed to imported as a module):
+
+
+if __name__ == '__main__':
+    main()
+                                           

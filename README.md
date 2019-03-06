@@ -12,4 +12,15 @@ http://youtu.be/lfk_T6VKhTE
 http://miniclip.com/games/sushi-go-round/en/
 
 
-Тестить бота предпочтительнее в браузере Mozilla Firefox, бот запускается из под командной строки\PyCharm IDE
+Тестить бота предпочтительнее в браузере Mozilla Firefox, бот запускается из под PyCharm IDE
+
+Список библиотек:
+
+Pillow	5.3.0	5.4.1
+PyAutoGUI	0.9.38	0.9.41
+PyMsgBox	1.0.6	1.0.6
+PyScreeze	0.1.18	0.1.19
+PyTweening	1.0.3	1.0.3
+pip	18.1	19.0.3
+setuptools	39.0.1	40.8.0
+virtualenv	16.1.0	16.4.3
